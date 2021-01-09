@@ -2,11 +2,24 @@ from src.dto.event_dto import EventDto
 
 
 class MsTeamsMessage:
+    """
+    Microsoft Teams Message 类,用于数据的传输
+    """
+
     def __init__(self, event_dto: EventDto):
+        """
+        初始化
+
+        :param event_dto: EventDto 对象
+        """
         self._event_dto = event_dto
 
     def gen_message(self) -> dict:
-        # 消息详情
+        """
+        返回一个有效的排版美观的 Microsoft Teams Message body
+
+        :return: dict对象
+        """
         section = {
             "activityTitle": f"注意: xxx云平台出现了服务告警事件",
             "activitySubtitle": self._event_dto.subject,

@@ -64,6 +64,6 @@ build:lambda:
     - ~/.ci_build/build.sh buildspec_deploy $SERVICE_NAME
   only:
     refs:
-      # feature/dev 只是AWS Account导致的差异,可以完全共享配置
-      - feature
+      # main/dev 只是AWS Account导致的差异,可以完全共享配置
+      - main
       - dev
