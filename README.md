@@ -119,4 +119,5 @@ curl -H 'Content-Type: application/json' -d '{
 
 ## AWS Lambda Step Function Graph
 **注意**: 当前(2021/04/20)只是设计了Step的各种state类型.并无实际的逻辑,其中的python代码也并未做逻辑上的上下文衔接.
+
 ![stepfunctions_graph](https://markdown-1.oss-cn-shenzhen.aliyuncs.com/mk/stepfunctions_graph.svg)
