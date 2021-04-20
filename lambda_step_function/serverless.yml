@@ -1,0 +1,229 @@
+# https://www.serverless.com/framework/docs/providers/aws/guide/serverless.yml/
+# 服务名称
+service: poc-one-more-step
+
+frameworkVersion: '2'
+# 服务提供商
+provider:
+  lambdaHashingVersion: 20201221
+  # 服务提供商名称
+  name: aws
+  # 运行时
+  runtime: ${opt:runtime,file(./serverless_config.yml):DEFAULT_PY_RUNTIME}
+  # 内存大小
+  memorySize: ${opt:memorySize,file(./serverless_config.yml):DEFAULT_MEMORY_SIZE}
+  # 日志保留时间
+  logRetentionInDays: ${opt:logRetentionInDays,file(./serverless_config.yml):LOG_RETENTIONIN_DAYS}
+  # aws stage,也就是环境
+  stage: ${opt:stage,file(./serverless_config.yml):DEFAULT_DEPLOY_ENV}
+  # aws 服务区
+  region: ${opt:region,file(./serverless_config.yml):AWS_DEFAULT_REGION}
+  # aws credentials profile
+  profile: ${opt:profile,file(./serverless_config.yml):AWS_PROFILE_NAME}
+  # aws account id
+  awsAccount: ${opt:awsAccount,file(./serverless_config.yml):AWS_ACCOUNT}
+  # 超时时间
+  timeout: ${opt:timeout,file(./serverless_config.yml):DEFAULT_TIMEOUT}
+  vpc:
+    securityGroupIds:
+      - ${file(./serverless_config.yml):GATEWAY_SG}
+    subnetIds:
+      - subnet-05223ee7a776db296
+      - subnet-07999eb708e5f6074
+      - subnet-0e06537046eea7a19
+  environment:
+    STAGE: ${self:provider.stage}
+    SERVICE_NAME: ${self:service}
+    REGION: ${self:provider.region}
+  apiGateway:
+    restApiId:
+      Fn::ImportValue: iot-platform-${self:provider.stage}-ApiGateway-restApiId
+    restApiRootResourceId:
+      Fn::ImportValue: iot-platform-${self:provider.stage}-ApiGateway-rootResourceId
+    restApiResources:
+      /poc: 1pd28c
+  role: arn:aws:iam::${self:provider.awsAccount}:role/serverless-container-role-for-lambda
+  endpointType: regional
+  deploymentBucket:
+    blockPublicAccess: true
+    skipPolicySetup: true
+    name: ${file(./serverless_config.yml):LAMBDA_DEPLOY_S3_BUCKET}-${self:provider.stage}
+    #deploymentPrefix: ${self:service}
+
+# 排除文件
+package:
+  exclude:
+    # 排除环境配置文件
+    - serverless_config.yml
+    ## 排除sh脚本
+    - ./*.sh
+    ## 排除历史环境变量
+    - ./*.env
+
+plugins:
+  - serverless-step-functions
+  - serverless-pseudo-parameters
+
+functions:
+  pocOneMoreStepA:
+    name: poc_one_more_step_a
+    handler: src/step_a.lambda_handler
+    description: step function PoC,Step A
+
+  pocOneMoreStepB1:
+    name: poc_one_more_step_b1
+    handler: src/step_c1.lambda_handler
+    description: step function PoC,Step B1
+
+  pocOneMoreStepB2:
+    name: poc_one_more_step_b2
+    handler: src/step_c2.lambda_handler
+    description: step function PoC,Step B2
+
+  pocOneMoreStepC:
+    name: poc_one_more_step_c
+    handler: src/step_b.lambda_handler
+    description: step function PoC,Step C
+
+  pocOneMoreStepD1:
+    name: poc_one_more_step_d1
+    handler: src/step_d1.lambda_handler
+    description: step function PoC,Step D1
+  pocOneMoreStepD2:
+    name: poc_one_more_step_d2
+    handler: src/step_d2.lambda_handler
+    description: step function PoC,Step D2
+
+  pocOneMoreStepE:
+    name: poc_one_more_step_e
+    handler: src/step_e.lambda_handler
+    description: step function PoC,Step E
+
+  pocOneMoreStepF1:
+    name: poc_one_more_step_f1
+    handler: src/step_f1.lambda_handler
+    description: step function PoC,Step F1
+  pocOneMoreStepF2:
+    name: poc_one_more_step_f2
+    handler: src/step_f2.lambda_handler
+    description: step function PoC,Step F2
+
+stepFunctions:
+  stateMachines:
+    oneMoreStepMachine:
+      events:
+        - http:
+            path: poc/steps/a
+            method: get
+      name: oneMoreStep
+      definition:
+        Comment: "A Hello World example of the Amazon States Language using an AWS Lambda Function"
+        StartAt: pocStepsA
+        States:
+          pocStepsA:
+            Type: Task
+            Resource:
+              Fn::GetAtt: [ pocOneMoreStepA, Arn ]
+            Next: switchStepA
+          switchStepA:
+            Type: Choice
+            Choices:
+              - Variable: "$.foo"
+                NumericEquals: 1
+                Next: pocStepsB1
+              - Variable: "$.foo"
+                NumericEquals: 2
+                Next: pocStepsB2
+          pocStepsB1:
+            Type: Task
+            Resource:
+              Fn::GetAtt: [ pocOneMoreStepB1, Arn ]
+            Next: pocStepsC
+          pocStepsB2:
+            Type: Task
+            Resource:
+              Fn::GetAtt: [ pocOneMoreStepB2, Arn ]
+            Next: pocStepsC
+          pocStepsC:
+            Type: Task
+            Resource:
+              Fn::GetAtt: [ pocOneMoreStepC, Arn ]
+            Catch:
+              - ErrorEquals: [ "HandledError" ]
+                Next: CustomErrorFallback
+              - ErrorEquals: [ "States.TaskFailed" ]
+                Next: ReservedTypeFallback
+              - ErrorEquals: [ "States.ALL" ]
+                Next: CatchAllFallback
+            Next: pocStepsD
+          CustomErrorFallback:
+            Type: Pass
+            Result: "This is a fallback from a custom lambda function exception"
+            End: true
+          ReservedTypeFallback:
+            Type: Pass
+            Result: "This is a fallback from a reserved error code"
+            End: true
+          CatchAllFallback:
+            Type: Pass
+            Result: "This is a fallback from a reserved error code"
+            End: true
+          pocStepsD:
+            Type: Map
+            Iterator:
+              StartAt: FirstDMapTask
+              States:
+                FirstDMapTask:
+                  Type: Task
+                  Resource:
+                    Fn::GetAtt: [ pocOneMoreStepD1, Arn ]
+                  Next: SecondDMapTask
+                SecondDMapTask:
+                  Type: Task
+                  Resource:
+                    Fn::GetAtt: [ pocOneMoreStepD2, Arn ]
+                  End: true
+            Next: pocStepsE
+          pocStepsE:
+            Type: Task
+            Resource:
+              Fn::GetAtt: [ pocOneMoreStepE, Arn ]
+              Retry:
+                - ErrorEquals:
+                  - HandledError
+                  IntervalSeconds: 1
+                  MaxAttempts: 2
+                  BackoffRate: 2
+                - ErrorEquals:
+                  - States.TaskFailed
+                  IntervalSeconds: 30
+                  MaxAttempts: 2
+                  BackoffRate: 2
+                - ErrorEquals:
+                  - States.ALL
+                  IntervalSeconds: 5
+                  MaxAttempts: 5
+                  BackoffRate: 2
+            Next: pocStepsF
+          pocStepsF:
+            Type: Parallel
+            Next: Final State
+            Branches:
+              - StartAt: pocStepsF1
+                States:
+                  pocStepsF1:
+                    Type: Task
+                    Resource:
+                      Fn::GetAtt: [ pocOneMoreStepF1, Arn ]
+                    End: true
+              - StartAt: pocStepsF2
+                States:
+                  pocStepsF2:
+                    Type: Task
+                    Resource:
+                      Fn::GetAtt: [ pocOneMoreStepF2, Arn ]
+                    End: true
+          Final State:
+            Type: Wait
+            Seconds: 20
+            End: true

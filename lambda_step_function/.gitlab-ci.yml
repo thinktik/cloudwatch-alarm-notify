@@ -1,0 +1,95 @@
+default:
+  image: 10.124.106.001:5000/codebuild/gitlab
+
+stages:
+  - pre_build
+  - env_prepare
+  - deploy
+
+pre_build:aws_credentials:
+  stage: pre_build
+  before_script:
+    # 清理 ~/.aws/,设置正确的aws credentials profile
+    - rm -rf ~/.aws/ && mkdir -p ~/.aws/
+    # dev
+    - echo [profile overseas_iot_dev] >> ~/.aws/config
+    - echo region = ${OVERSEAS_AWS_DEV_DEFAULT_REGION} >> ~/.aws/config
+    - echo output = json >> ~/.aws/config
+    - echo [overseas_iot_dev] >> ~/.aws/credentials
+    - echo aws_access_key_id = ${OVERSEAS_AWS_DEV_ACCESS_KEY_ID} >> ~/.aws/credentials
+    - echo aws_secret_access_key = ${OVERSEAS_AWS_DEV_SECRET_ACCESS_KEY} >> ~/.aws/credentials
+    # feature
+    - echo [profile overseas_iot_feature] >> ~/.aws/config
+    - echo region = ${OVERSEAS_AWS_FEATURE_DEFAULT_REGION} >> ~/.aws/config
+    - echo output = json >> ~/.aws/config
+    - echo [overseas_iot_feature] >> ~/.aws/credentials
+    - echo aws_access_key_id = ${OVERSEAS_AWS_FEATURE_ACCESS_KEY_ID} >> ~/.aws/credentials
+    - echo aws_secret_access_key = ${OVERSEAS_AWS_FEATURE_SECRET_ACCESS_KEY} >> ~/.aws/credentials
+  script:
+    - cp -r ~/.aws/credentials ~/.aws/config ./
+    # 查看系统信息信息
+    - echo "查看系统信息:"
+    - cat /proc/version
+    - python3 -V
+    - node -v
+    - serverless -v
+    - lsb_release -a
+  artifacts:
+    paths:
+      - credentials
+      - config
+  only:
+    - branches
+
+env_prepare:env_prepare:
+  stage: env_prepare
+  variables:
+    # 动态读取
+    STAGE: $CI_COMMIT_REF_NAME
+    # 动态读取
+    SERVICE_NAME: $CI_PROJECT_NAME
+    # 动态的值
+    AWS_PROFILE_NAME: "overseas_iot_$CI_COMMIT_REF_NAME"
+  before_script:
+    - rm -rf ~/.aws/ && mkdir ~/.aws
+    - cp credentials ~/.aws/ && cp config ~/.aws/
+  script:
+    # 按环境不同选择不同的S3桶并指定具体的 aws credentials profile
+    - aws s3 sync s3://overseas-iot-ci-${CI_COMMIT_REF_NAME}/ ./ci_build --profile ${AWS_PROFILE_NAME}
+    - echo 环境准备完成
+  artifacts:
+    paths:
+      - ./ci_build
+  only:
+    refs:
+      - feature
+      - dev
+
+build:lambda:
+  stage: deploy
+  variables:
+    STAGE: $CI_COMMIT_REF_NAME
+    SERVICE_NAME: $CI_PROJECT_NAME
+    AWS_PROFILE_NAME: "overseas_iot_$CI_COMMIT_REF_NAME"
+  before_script:
+    - rm -rf ~/.aws/ && mkdir ~/.aws
+    - mv credentials ~/.aws/ && mv config ~/.aws/
+    - rm -rf ~/.ci_build
+    # 清理脚本隐藏起来,不部署到AWS Lambda中,使部署的结果简单并缩小体积
+    - mv ./ci_build ~/.ci_build
+    # 执行环境准备相关的脚本
+    - chmod a+x ~/.ci_build/prepare_env/set_env.sh
+    - ~/.ci_build/prepare_env/set_env.sh ${STAGE}
+    # 更新Linux系统变量
+    - source ~/.bash_profile
+    # 转移normal_lambda_build.sh,方便后面使用
+    - cp ~/.ci_build/build-config-cache/normal_lambda_build.sh ~/.ci_build/build.sh && chmod a+x ~/.ci_build/build.sh
+  script:
+    # 输出commit sha值,方便调试
+    - echo $CI_COMMIT_SHA
+    # 环境准备完成,进行部署
+    - ~/.ci_build/build.sh buildspec_deploy $SERVICE_NAME
+  only:
+    refs:
+      - feature
+      - dev
